@@ -3,3 +3,9 @@
 
 # class-feature-distribution
 分类数据，特征变量频数统计图
+
+# Stacked-and-Grouped-barplot
+堆积柱状图，分组数据，不同组别不同颜色，画在一个柱子上
+
+# heatmap
+热力图，传统热力图，单行热力图

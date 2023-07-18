@@ -1,0 +1,459 @@
+---
+title: "R语言数据可视化"
+author: "Cooper"
+documentclass: ctexart
+geometry: "left=2cm, right=2cm, top=2cm, bottom=2cm"
+keywords:
+  - 中文
+  - R Markdown
+output:
+  rticles::ctex:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    latex_engine: xelatex
+    toc_depth: 3 
+---
+\newpage
+
+# 实验介绍
+
+实验目的：研究什么因素会影响学生的成绩
+
+数据来源：网页下载<http://roycekimmons.com/tools/generated_data/exams>
+
+数据说明：该数据集包括三次考试的分数以及各种对其产生影响的个人、社会因素。
+
+
+# 主要内容
+## STEP 1 载入所有需要使用的包
+```{r}
+library(pacman)
+p_load(dplyr, tidyverse, ggplot2, ggthemes, patchwork, corrplot, ggsci, rticles)
+```
+
+dplyr # 数据处理
+
+tidyverse&ggplot2 # 数据可视化作图
+
+ggthemes # 绘图的主题包 theme_stata()和scale_color_economist()
+
+ggsci # 绘图的颜色包 scale_color_jco()和scale_color_npg()
+
+patchwork # 用于拼接图片
+
+corrplot # 绘制相关性图
+
+rticles #Rmarkdown主题包，使用CTeX documents，输出中文PDF
+
+## STEP 2 数据预处理
+
+### 读入数据
+
+```{r comment=''}
+data.st <- as.data.frame(read.csv('student-exams.csv'))
+head(data.st,n=10)
+```
+
+### 查看基本信息
+```{r comment=''}
+glimpse(data.st)#查看基本信息
+```
+
+一共7列，1000行数据即1000个学生。
+
+变量名解释：
+
+|            变量名             |          含义          |
+| :-------------------------: | :--------------------: |
+|           gender            |          性别          |
+|       race.ethnicity        |        学生分组        |
+| parental.leval.of.education |    父母的受教育水平    |
+|   test.preparation.course   | 学生是否完成预科班课程 |
+|         math.score          |        数学分数        |
+|        reading.score        |        阅读分数        |
+|        writing.score        |        写作分数        |
+
+该数据集显示了学生在数学、阅读和写作方面的表现，以及性别和其他社会因素。
+
+### 为了方便理解和操作重命名列名
+```{r comment=''}
+names_columns <- c('Gender','Race','Parent_Education','Test_Prep','M_Score','R_Score','W_Score')
+colnames(data.st) <- names_columns
+colnames(data.st)
+```
+
+### 检查数据是否有异常值
+
+```{r collapse=TRUE }
+summary(data.st)
+table(data.st$Gender)
+table(data.st$Race)
+table(data.st$Parent_Education)
+table(data.st$Test_Prep)
+```
+三项成绩中阅读成绩平均值最高，
+
+可以看出数据中没有NA或者缺失值。
+
+### 添加新的一列平均成绩进入数据
+平均成绩更加适合检验一个学生成绩表现
+```{r comment=''}
+data.st <- data.st %>% mutate(Avg_Score = (M_Score+R_Score+W_Score)/3)
+#增加平均成绩这一列
+head(data.st,10)
+```
+以上展示了增加了平均成绩这一列之后的数据的前十行。
+
+## STEP 3 数据可视化
+
+数据可视化的主要目的是为了方便进行数据分析，以下我会试用ggplot2这个包绘制不同测试分数与学生性别、父母教育程度、不同分组关系的图。
+
+### 不同组中男女生的数量（直方图）
+
+```{r comment=''}
+data.st %>% group_by(Race, Gender) %>% summarise(n = n()) %>% 
+  ggplot(aes(x = reorder(Race, -n), 
+             y = n, fill = Gender)) + #reorder()按照男女生的数量排序从低到高
+  geom_col(position = 'dodge')  + coord_flip() + #coord_flip让整个图横过来
+  labs(x = "Race",y='Count') + 
+  ggtitle('Number of Students by Race') + 
+  scale_color_jco(alpha=0.6) + 
+  scale_fill_jco(alpha=0.6,labels = c("female", "male")) + 
+  theme_stata()
+```
+
+在这通过直方图根据性别显示有多少学生来自不同的社区，
+
+可以明显看出A组男女生数量都远小于其他四组，C组女生最多而D组男生最多。
+
+### 父母受教育程度的统计（直方图）
+
+```{r fig.width=10,fig.height=9}
+data.st %>% group_by(Parent_Education) %>% summarise(n = n()) %>% 
+  ggplot(aes(x = reorder(Parent_Education, n), y = n, fill = Parent_Education)) + 
+  geom_col()  + geom_text(aes(label = n), vjust = 0.01) +
+  labs(x = "Parents Education") + 
+  ggtitle('Number of Students by Parental Education Level') + 
+  scale_color_economist()+scale_fill_economist() + 
+  theme_stata()
+```
+
+显示了不同受教育程度的父母，他们中的大多数都为高中和一些学院毕业，硕士毕业的父母较少。
+
+### 按性别划分考试分数（堆积柱状图）
+
+```{r fig.width=8,fig.height=7}
+# Math scores by Gender plot
+
+p1 <- ggplot(data.st, aes(M_Score)) +  
+	geom_histogram(binwidth=5, color="gray", aes(fill=Gender)) + 
+ 	xlab("Math Score") + ylab("Gender") + 
+  ggtitle("Math Scores by Gender") + #坐标轴和标题
+  scale_color_jco(alpha=0.6)+scale_fill_jco(alpha=0.6) +
+  theme_stata()
+
+# Reading scores by Gender 
+
+p2 <- ggplot(data.st, aes(R_Score)) + 
+	geom_histogram(binwidth=5, color="gray", aes(fill=Gender)) + 
+	xlab("Reading Score") + ylab("Gender") + 
+  ggtitle("Reading Scores by Gender") + 
+  scale_color_jco(alpha=0.6)+scale_fill_jco(alpha=0.6) + 
+  theme_stata()
+
+# Writing scores by Gender plot
+
+p3 <- ggplot(data.st, aes(W_Score)) + 
+	geom_histogram(binwidth=5, color="gray", aes(fill=Gender)) + 
+	xlab("Writing Score") + ylab("Gender") + 
+  ggtitle("Writing Scores by Gender") + 
+  scale_color_jco(alpha=0.6)+scale_fill_jco(alpha=0.6) + 
+  theme_stata()
+
+#patchwork用于拼接
+
+p1/p2/p3 +
+  patchwork::plot_layout(guides = "collect") #只出现一个图例
+
+```
+
+按性别划分考试分数，以确定每个性别是否有不同的分数倾向，
+
+可以明显看出男生的数学成绩明显高于女生，
+
+同时女生的阅读和写作成绩也高于男生。
+
+### 学生成绩与性别和是否做完成预科班课程（小提琴图）
+
+```{r comment=''}
+#数学成绩
+b1 <- ggplot(data.st, aes(Gender, M_Score, fill = Test_Prep)) + 
+    geom_violin() + #绘制小提琴图  
+    ggtitle("Math Score by Gender Boxplot") + 
+    xlab("Gender") + ylab("Math Scores") + #坐标轴和标题
+    scale_color_jco(alpha=0.5)+scale_fill_jco(alpha=0.5) + theme_stata()
+
+#阅读成绩
+b2 <- ggplot(data.st, aes(Gender, R_Score, fill = Test_Prep)) + 
+    geom_violin() + 
+    ggtitle("Reading Score by Gender Boxplot") + 
+    xlab("Gender") + ylab("Reading Scores") + 
+    scale_color_jco(alpha=0.5)+scale_fill_jco(alpha=0.5) + 
+    theme_stata()
+
+#写作分数
+b3 <- ggplot(data.st, aes(Gender, W_Score, fill = Test_Prep)) + 
+    geom_violin() + 
+    ggtitle("Writing Score by Gender Boxplot") + 
+    xlab("Gender") + ylab("Writing Scores") + 
+    scale_color_jco(alpha=0.5)+scale_fill_jco(alpha=0.5) + 
+    theme_stata()
+
+b1;b2;b3
+```
+
+小提琴图相当于密度分布图旋转90度，然后再做个对称的镜像，
+
+最宽或者最厚的地方，对应着数据密度最大的地方。
+
+完成预科班学习的学生相比于没有进行预科班学习的学生在所有三项测试中都取得了更好的成绩。
+
+男生的数学成绩较好；女生的阅读和写作成绩好。
+
+在所有三个测试中都存在极端值（分数过高或过低），存在成绩特别好的同时也有成绩非常差的。
+
+### 不同组学生的平均成绩（散点箱线图）
+
+```{r warning=FALSE,fig.height=5}
+data.st %>%
+  #reorder()按照平均成绩从低到高排序
+  ggplot(aes(reorder(x = Race,Avg_Score),y = Avg_Score ,color=Race)) + 
+  geom_boxplot() + #箱线图
+  geom_jitter()+ #散点图
+  stat_summary(fun.y = median, colour = "red", geom = "point", size = 5) + 
+  #添加一个每一组平均值的点显示在图中便于观察
+  ggtitle('Avg Score by Race') + 
+  scale_color_jco()+scale_fill_jco() + theme_stata()
+```
+
+按平均分由低到高排序，可以看出E组学生的平均成绩明显高于另外四组，
+
+绝大部分E组人成绩集中在70分以上，
+
+同时B组和C组有不少极端值（分数过高或过低）。
+
+### 父母受教育程度和学生成绩（热力图）
+
+```{r fig.height=4.5}
+e1 <- ggplot(data.st) + #数学成绩
+	geom_bin2d(aes(x=M_Score, y=Parent_Education)) +
+	xlab("Math Scores") + ylab("Parents Education") 
+
+e2 <- ggplot(data.st) + #阅读成绩
+	geom_bin2d(aes(x=R_Score, y=Parent_Education)) +
+	xlab("Reading Scores") + ylab("Parents Education") 
+
+e3 <- ggplot(data.st) + #写作成绩
+	geom_bin2d(aes(x=W_Score, y=Parent_Education)) +
+	xlab("Writing Scores") + ylab("Parents Education") 
+
+e1;e2;e3
+```
+
+热力图能够很好的生成高质量的矩阵，用聚类算法将结果可视化，颜色越浅表明该分数段人越多。
+
+### 学生成绩取前5%和后5%（小提琴图和堆积柱状图）
+```{r results='hold',fig.height=4.6,fig.align='center'}
+#取出前5%和后5%的学生
+ALL_scores <- data.st %>% #取出所有学生的成绩
+  select(`M_Score`, `R_Score`, `W_Score`)
+exam_data <- data.st %>% #添加总分这一列
+  mutate(total = rowSums(ALL_scores, na.rm = FALSE)) %>% 
+  arrange(desc(total))
+
+top_bottom <- exam_data %>% arrange(desc(total)) %>% 
+  slice(1:50, 951:1000) %>% #取前5%和后5%即前50和951到100名
+  select(Gender, `Parent_Education`,total) %>%
+  rename(parents = "Parent_Education") %>% 
+  mutate(group = ifelse(total >= 271, "top", "bottom")) %>% 
+  mutate(parent_edu_level = ifelse(parents == "master's degree", "1", 
+  ifelse(parents == "bachelor's degree", "2", ifelse(parents == "some college", "3", 
+  ifelse(parents == "associate's degree", "4", ifelse(parents == "high school", "5", 
+  ifelse(parents == "some high school", "6", "0")))))))
+
+#对数据进行可视化
+#根据性别对学生进行分组，用小提琴图查看其分布
+t1 <- ggplot(top_bottom) + 
+  geom_violin(aes(x = Gender, y = total, fill = group)) + #小提琴图
+  ggtitle(label = "Distribution of Total Score by Gender") +
+  labs(fill = "exam scores", y = "score", x = "") +
+  scale_color_jco(alpha=0.6) + theme_stata() +
+  scale_fill_jco(alpha=0.6,labels = c("bottom 5%", "top 5%")) 
+#根据父母受教育程度进行分组
+t2 <- ggplot(top_bottom) + 
+  geom_bar(aes(x = parent_edu_level, fill = group),stat = "count",
+         position = "stack") + #柱状图
+  scale_x_discrete(labels=c(
+    "1" = "Master", "2" = "Bachelor", "3" = "some College",
+    "4" = "Associate","5" = "High School", "6" = "some High School")) +
+  theme(axis.text.x = element_text(angle = 15, vjust = 0.7, face = "bold")) +
+  ggtitle(label = "Parental Education Level of Students") +
+  labs(x = "", fill = "exam scores") + ylab('Count')+
+  scale_color_jco(alpha=0.6) + theme_stata() +
+  scale_fill_jco(alpha=0.6,labels = c("bottom 5%", "top 5%")) 
+
+t1;t2
+```
+
+对学生的三门总分进行计算并筛选出所有学生中的前5%和后5%，
+
+不同性别中仅有细微的差别，这表明性别并不会影响一个学生获得高分或是低分
+
+观察每一组的父母受教育水平以及对应学生为前5%或者倒数5%的数量。
+
+这个图显示，前5%的大多数学生的父母都受过大学教育，而后5%的大多数学生的父母都没有受过大学教育，
+
+父母硕士毕业的学生在top5%中数量比学士毕业的学生要少，这里忽略了每一种受教育水平的父母的总人数并不一致，
+
+从上图中可以发现父母硕士毕业而子女并没有哪怕一个在底部5%，而最低学历的父母的子女任然有一部分进入了顶部5%。
+
+父母**受教育程度越大**学生的平均**成绩差距越大**。
+
+根据以上几张图可以看的出**父母受教育程度越高，学生获得高分的概率越高**。
+### 父母受教育程度与学生平均成绩的回归分析
+
+```{r comment='',fig.width=8}
+data.st %>%
+  ggplot(aes(reorder(x = Parent_Education,Avg_Score),y = Avg_Score, 
+             color = Parent_Education, fill = Parent_Education)) + 
+  geom_boxplot() + theme_stata() + labs(x = "Parents Education") + 
+  ggtitle('Avg Score by Parental Education Level') + 
+  scale_color_npg(alpha = 0.7 )+scale_fill_npg(alpha = 0.7 ) 
+#分类变量回归分析
+mod1 <- lm(Avg_Score ~ Parent_Education, data = data.st)
+summary(mod1)
+```
+输出结果仅有Intercept截距和另外五个系数，associate不见了，而Parent_Education变量里有6组。
+
+回归时，选择associate为基线，bachelor的系数，可以理解为由associate切换到bachelor，引起Avg_Score收入的变化（效应）
+
+- 对 associate 组的估计，`Avg_Score = 69.107  = 69.107 `
+- 对 bachelor组的估计，`Avg_Score = 69.107  + 4.499 = 73.606`
+- 对 high school 组的估计，`Avg_Score = 69.107 + -2.270  = 66.837`
+- 对 master 组的估计，`Avg_Score = 69.107 + 5.687 = 74.794`
+- 对 some college 组的估计，`Avg_Score = 69.107 + -1.394 = 67.713`
+- 对 some high school 组的估计，`Avg_Score = 69.107  + -4.909 = 64.198`
+
+仅用父母的受教育程度**无法完全解释**学生平均分（Multiple R-squared仅有4.899%即对学生平均分的解释仅有4.899%）。
+
+## STEP 4 Regression回归分析
+
+### 不同分数间的相关性
+```{r comment=''}
+scores <- c("M_Score", "R_Score", "W_Score","Avg_Score")
+score <- data.st[scores]
+S <- cor(score)
+corrplot(S,method="color",addCoef.col="white",tl.col="black",tl.srt=45,order="AOE")
+```
+由上图可以看出数学成绩与写作和阅读成绩相关性差不多，而阅读和写作成绩之间的**相关性非常高**，这意味着阅读和写作成绩某一项较高（低）的学生他另一项的成绩也会较高（低）。
+
+### 学生数学成绩和阅读、写作成绩的回归分析引入分类变量性别
+```{r comment=''}
+#数学
+reg1 <- lm(M_Score~ Gender+R_Score+W_Score, data=data.st)
+summary(reg1)
+
+#阅读
+reg2 <- lm(R_Score~ Gender+M_Score+W_Score, data=data.st)
+summary(reg2)
+
+#写作
+reg3 <- lm(W_Score~ Gender+M_Score+R_Score, data=data.st)
+summary(reg3)
+```
+
+Multiple R-squared:  0.8401，性别、阅读和写作成绩对数学成绩的解释达到84%，另外两个分析结果也都达到92%，说明解释了大部分信息。
+
+以下为三个分析所得出的回归模型：
+$$
+Math\_Score = -6.55 + 12.74*Gendermale + 0.39*R\_Score + 0.58*W\_Score
+$$
+
+$$
+Writing\_Score = 3.25  -5.24*Gendermale + 0.25*M\_Score + 0.74*R\_Score
+$$
+
+$$
+Reading\_Score = 5.55  -0.60*Gendermale + 0.17*M\_Score + 0.77*W\_Score
+$$
+
+**模型解释**：
+
+三个模型都以Genderfemale为基线，其中Math_Score与性别为女的相关性为负，而Writing_Score和Reading_Score与性别男相关性为负，这与上方所做出的堆积直方图结果吻合，男生的数学成绩优于女生，而女生写作和阅读成绩优于男生，分别呈正相关。
+
+除此之外，虽然数学成绩与男性呈正相关与女性呈负相关但其系数高于阅读和写作与性别关系的系数。
+
+以Math_Score为例：
+
+- `Gendermale = 12.74` 当R_Score和W_Score保持不变时，Gendermale变化引起的Math_Score变化
+
+### 学生的写作分数和阅读分数的回归分析引入分类变量性别及线性
+
+```{r comment=''}
+reg <- lm(W_Score~ Gender+R_Score, data=data.st)
+summary(reg)
+
+data.st %>%
+  ggplot(aes(x = R_Score, y = W_Score, color = Gender)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(aes(y = predict(reg))) + 
+  ggtitle('Writing Score with Gender and Reading Score') + 
+  scale_color_npg(alpha = 0.7 )+scale_fill_npg(alpha = 0.7 ) + 
+  theme_stata()
+```
+$$
+Writing\_Score = 1.90  -2.44*Gendermale + 0.97*R\_Score
+$$
+
+写作分数和阅读分数**线性正相关**。
+
+# 实验总结
+
+## 实验具体内容
+
+1. 男女生数量按组别分：柱状图（横向）
+2. 父母的受教育程度的统计：直方图
+3. 学生成绩分男女：堆积柱状图
+4. 学生成绩分男女分是否准备：小提琴图
+5. 学生平均成绩与组别：散点箱线图
+6. 学生成绩与家长受教育程度：热力图
+7. 学生成绩取前5%和后5% （与性别和家长受教育程度）：小提琴图和堆积柱状图
+8. 学生成绩与家长受教育程度的分类回归分析：箱线图
+9. 学生成绩间的相关性图
+10. 学生成绩与性别的回归分析
+11. 学生的写作/阅读分数的回归分析
+
+## 数据分析结论
+
+学生成绩分为数学、阅读、写作成绩
+
+数据中还包含学生的性别、父母受教育程度、分组情况、是否完成预科班学习
+
+通过数据可视化和回归分析可以得到以下结论：
+
+1. C组与D组人数最多，而A组人数远小于其他组。
+
+2. 高中和一些学院毕业的父母较多而硕士毕业的父母较少。
+   前5%的大多数学生的父母都受过大学教育，而后5%的大多数学生的父母都没有受过大学教育，
+   **父母受教育程度越高学生的平均成绩差距越大，父母受教育程度越高学生获得高分的概率越高**。
+   
+3. 男生的数学成绩明显高于女生，女生的阅读和写作成绩也高于男生，**男生的逻辑思维能力较强而女生的感性和理解能力较强**。
+
+4. 完成预科班学习的学生相比于没有进行预科班学习的学生在所有三项测试中都取得了更好的成绩，**一定的提前预习有助于获取高分**。
+
+   
+
+   
+
+   
